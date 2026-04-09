@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TI Dashboard — Monitoramento em Tempo Real</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8 font-sans">
+
+  <div class="max-w-6xl mx-auto">
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+          <span class="bg-blue-600 p-2 rounded-lg">🛠️</span>
+          Painel de Chamados TI
+        </h1>
+        <p class="text-slate-400 mt-1">Monitoramento em tempo real — Magna Produção</p>
+      </div>
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex items-center gap-4">
+        <div class="text-right">
+          <p class="text-xs text-slate-500 uppercase font-bold tracking-wider">Status do Servidor</p>
+          <p class="text-green-400 font-medium flex items-center justify-end gap-2">
+            <span class="relative flex h-3 w-3">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            </span>
+            Conectado ao Firebase
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-700/50 text-slate-300 text-sm uppercase tracking-tight">
+              <th class="p-4 font-semibold">Prioridade</th>
+              <th class="p-4 font-semibold">Local / Linha</th>
+              <th class="p-4 font-semibold">Categoria</th>
+              <th class="p-4 font-semibold">Descrição</th>
+              <th class="p-4 font-semibold">Operador</th>
+              <th class="p-4 font-semibold">Hora</th>
+              <th class="p-4 font-semibold text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="lista-chamados" class="divide-y divide-slate-700">
+            </tbody>
+        </table>
+      </div>
+      <div id="vazio" class="p-20 text-center hidden">
+        <div class="text-6xl mb-4">☕</div>
+        <h3 class="text-xl font-medium text-slate-400">Tudo limpo por aqui!</h3>
+        <p class="text-slate-500">Nenhum chamado pendente no momento.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+
+    // ================================================
+    // CONFIGURAÇÃO - USE AS MESMAS CHAVES DO INDEX.HTML
+    // ================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyAck5mx4L0dzkcihFchV7-Oqt4fXGVyxVo",
+      authDomain: "magna-service-desk.firebaseapp.com",
+      projectId: "magna-service-desk",
+      storageBucket: "magna-service-desk.firebasestorage.app",
+      messagingSenderId: "377327792574",
+      appId: "1:377327792574:web:c9b8623342b71fe89289ef",
+      measurementId: "G-YBLC6NTSL6"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const listaDocs = document.getElementById('lista-chamados');
+    const divVazio = document.getElementById('vazio');
+
+    // ESCUTADOR EM TEMPO REAL (onSnapshot)
+    // Filtra apenas chamados com status "Aberto" e ordena pelos mais novos
+    const q = query(
+      collection(db, "chamados_fabrica"), 
+      where("status", "==", "Aberto"),
+      orderBy("dataCriacao", "desc")
+    );
+
+    onSnapshot(q, (snapshot) => {
+      listaDocs.innerHTML = "";
+      
+      if (snapshot.empty) {
+        divVazio.classList.remove('hidden');
+      } else {
+        divVazio.classList.add('hidden');
+        snapshot.forEach((doc) => {
+          renderizarLinha(doc.id, doc.data());
+        });
+      }
+    });
+
+    function renderizarLinha(id, dado) {
+      const corPrioridade = {
+        'Alta': 'bg-red-500/20 text-red-400 border-red-500/50',
+        'Média': 'bg-orange-500/20 text-orange-400 border-orange-500/50',
+        'Baixa': 'bg-blue-500/20 text-blue-400 border-blue-500/50'
+      }[dado.prioridade] || 'bg-slate-500/20';
+
+      const dataFormatada = dado.dataCriacao ? dado.dataCriacao.toDate().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}) : '--:--';
+
+      const tr = document.createElement('tr');
+      tr.className = "hover:bg-slate-700/30 transition-colors group";
+      tr.innerHTML = `
+        <td class="p-4">
+          <span class="px-3 py-1 rounded-full text-xs font-bold border ${corPrioridade}">
+            ${dado.prioridade}
+          </span>
+        </td>
+        <td class="p-4 font-medium text-slate-200">${dado.linha}</td>
+        <td class="p-4 text-slate-400 text-sm">${dado.categoria}</td>
+        <td class="p-4 text-slate-300 text-sm max-w-xs truncate" title="${dado.descricao}">${dado.descricao}</td>
+        <td class="p-4 text-slate-400 text-sm">${dado.operador}</td>
+        <td class="p-4 text-slate-500 text-sm">${dataFormatada}</td>
+        <td class="p-4 text-center">
+          <button onclick="concluirChamado('${id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all transform group-hover:scale-105">
+            Concluir
+          </button>
+        </td>
+      `;
+      listaDocs.appendChild(tr);
+    }
+
+    // Função para atualizar o status no Firebase
+    window.concluirChamado = async (id) => {
+      if(confirm("Deseja marcar este chamado como resolvido?")) {
+        const docRef = doc(db, "chamados_fabrica", id);
+        try {
+          await updateDoc(docRef, { status: "Concluido" });
+        } catch (e) {
+          alert("Erro ao atualizar status: " + e.message);
+        }
+      }
+    };
+  </script>
+</body>
+</html>
