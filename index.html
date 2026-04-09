@@ -2,36 +2,47 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TI Dashboard — Magna</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 p-6 font-sans">
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8 font-sans">
 
   <audio id="som-alerta" src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" preload="auto"></audio>
 
   <div class="max-w-6xl mx-auto">
-    <div class="flex justify-between items-center mb-8">
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
       <div>
-        <h1 class="text-3xl font-bold text-white flex items-center gap-3">🛠️ Painel Service Desk</h1>
-        <p class="text-slate-400">Monitoramento em Tempo Real</p>
+        <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+          <span class="bg-blue-600 p-2 rounded-lg">🛠️</span>
+          Painel de Chamados TI
+        </h1>
+        <p class="text-slate-400 mt-1">Monitoramento em Tempo Real — Magna</p>
       </div>
-      <div id="status" class="bg-slate-800 px-4 py-2 rounded border border-slate-700 text-orange-400 font-bold">Conectando...</div>
+      <div id="status-box" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <p class="text-xs text-slate-500 uppercase font-bold tracking-widest text-right">Servidor</p>
+        <p id="status-text" class="text-orange-400 font-medium flex items-center justify-end gap-2">Conectando...</p>
+      </div>
     </div>
 
     <div class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
-      <table class="w-full text-left">
-        <thead class="bg-slate-700/50 text-slate-300 text-xs uppercase tracking-wider">
-          <tr>
-            <th class="p-4">Linha</th>
-            <th class="p-4">Categoria</th>
-            <th class="p-4">Descrição</th>
-            <th class="p-4">Operador</th>
-            <th class="p-4 text-center">Ação</th>
-          </tr>
-        </thead>
-        <tbody id="lista" class="divide-y divide-slate-700"></tbody>
-      </table>
-      <div id="vazio" class="p-20 text-center hidden text-slate-500">Nenhum chamado pendente ☕</div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead class="bg-slate-700/50 text-slate-300 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="p-4 font-semibold">Local / Linha</th>
+              <th class="p-4 font-semibold">Categoria</th>
+              <th class="p-4 font-semibold">Descrição</th>
+              <th class="p-4 font-semibold">Operador</th>
+              <th class="p-4 font-semibold text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="lista-chamados" class="divide-y divide-slate-700"></tbody>
+        </table>
+      </div>
+      <div id="vazio" class="p-20 text-center hidden text-slate-500 font-medium italic">
+        ☕ Tudo em ordem. Nenhum chamado pendente.
+      </div>
     </div>
   </div>
 
@@ -50,29 +61,31 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    let carregado = false;
+    let primeiroCarregamento = true;
 
+    // Consulta apenas chamados ABERTOS
     const q = query(collection(db, "chamados_fabrica"), where("status", "==", "Aberto"));
 
     onSnapshot(q, (snapshot) => {
-      const statusDiv = document.getElementById('status');
-      statusDiv.innerText = "● ONLINE";
-      statusDiv.className = "bg-green-900/20 px-4 py-2 rounded border border-green-500/50 text-green-400 font-bold";
+      const statusText = document.getElementById('status-text');
+      statusText.innerText = "● ONLINE";
+      statusText.className = "text-green-400 font-medium flex items-center justify-end gap-2";
 
-      if (carregado) {
+      // Detectar Novos Chamados para Notificar
+      if (!primeiroCarregamento) {
         snapshot.docChanges().forEach(change => {
           if (change.type === "added") {
             // Tocar Som
-            document.getElementById('som-alerta').play().catch(() => console.log("Interaja com a página primeiro para ativar o som"));
+            document.getElementById('som-alerta').play().catch(() => console.log("Áudio bloqueado. Clique na página."));
             // Notificação de Desktop
             if (Notification.permission === "granted") {
-              new Notification("🚨 Novo Chamado TI", { body: `Linha: ${change.doc.data().linha} - ${change.doc.data().categoria}`, icon: "https://cdn-icons-png.flaticon.com/512/564/564619.png" });
+              new Notification("🚨 NOVO CHAMADO", { body: `Linha: ${change.doc.data().linha}\n${change.doc.data().categoria}` });
             }
           }
         });
       }
 
-      const lista = document.getElementById('lista');
+      const lista = document.getElementById('lista-chamados');
       lista.innerHTML = "";
       
       if (snapshot.empty) document.getElementById('vazio').classList.remove('hidden');
@@ -83,22 +96,28 @@
         lista.innerHTML += `
           <tr class="hover:bg-slate-700/30 transition-colors">
             <td class="p-4 font-bold text-blue-400">${d.linha}</td>
-            <td class="p-4 text-sm">${d.categoria}</td>
-            <td class="p-4 text-sm text-slate-300 italic">"${d.descricao}"</td>
-            <td class="p-4 text-sm text-slate-400">${d.operador}</td>
+            <td class="p-4 text-sm text-slate-100">${d.categoria}</td>
+            <td class="p-4 text-sm text-slate-400 italic max-w-xs truncate" title="${d.descricao}">${d.descricao}</td>
+            <td class="p-4 text-sm text-slate-300 font-medium">${d.operador}</td>
             <td class="p-4 text-center">
-              <button onclick="concluir('${docSnap.id}')" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-xs font-bold text-white transition-all">CONCLUIR</button>
+              <button onclick="concluir('${docSnap.id}')" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">CONCLUIR</button>
             </td>
           </tr>`;
       });
-      carregado = true;
+      primeiroCarregamento = false;
     });
 
-    if (Notification.permission !== "denied") Notification.requestPermission();
+    // Pedir permissão para notificações
+    if (Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
 
+    // Função global para o botão CONCLUIR
     window.concluir = async (id) => {
-      if(confirm("Marcar como concluído?")) {
-        await updateDoc(doc(db, "chamados_fabrica", id), { status: "Concluido" });
+      if (confirm("Marcar chamado como concluído? Ele sairá da lista principal.")) {
+        try {
+          await updateDoc(doc(db, "chamados_fabrica", id), { status: "Concluido" });
+        } catch (e) { alert("Erro ao concluir: " + e.message); }
       }
     };
   </script>
